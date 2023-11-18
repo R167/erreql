@@ -82,6 +82,7 @@ func isLiteralNonError(pass *analysis.Pass, expr ast.Expr) bool {
 	return !errName.MatchString(id.Name)
 }
 
+// The error interface type.
 var errType = types.Universe.Lookup("error").Type().Underlying().(*types.Interface)
 
 // Check if the expression's type implements the error interface.
@@ -91,8 +92,7 @@ func isErr(pass *analysis.Pass, e ast.Expr) bool {
 		return false
 	}
 	if it, ok := typ.Underlying().(*types.Interface); ok && it.NumMethods() == 0 {
-		// A target of interface{} is always allowed, since it often indicates
-		// a value forwarded from another source.
+		// skip interface{} since it could be anything
 		return false
 	}
 
