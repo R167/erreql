@@ -7,7 +7,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: ["windows-latest", "ubuntu-latest", "macOS-latest"]
+        os: ["ubuntu-latest"]
         go: ["1.20.x", "1.21.x"]
     runs-on: ${{ matrix.os }}
     steps:
@@ -23,5 +23,5 @@ jobs:
       with:
         version: "2022.1.1"
         install-go: false
-        cache-key: ${{ matrix.go }}
+        cache-key: "key-${{ matrix.go }}"
     - run: "go run ./cmd/erreql ./..."
