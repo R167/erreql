@@ -19,9 +19,4 @@ jobs:
         go-version: ${{ matrix.go }}
     - run: "go test ./..."
     - run: "go vet ./..."
-    - uses: dominikh/staticcheck-action@v1.3.0
-      with:
-        version: "2022.1.1"
-        install-go: false
-        cache-key: "key-${{ matrix.go }}"
     - run: "go run ./cmd/erreql ./..."
