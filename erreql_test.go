@@ -7,7 +7,7 @@ import (
 	"golang.org/x/tools/go/analysis/analysistest"
 )
 
-func Test(t *testing.T) {
+func TestDefault(t *testing.T) {
 	testdata := analysistest.TestData()
-	analysistest.Run(t, testdata, erreql.Analyzer, "./...")
+	analysistest.Run(t, testdata, erreql.DefaultAnalyzer, "./...")
 }

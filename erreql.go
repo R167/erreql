@@ -12,49 +12,92 @@ import (
 )
 
 // Analyzer is the main entry point for the analyzer.
-var Analyzer = &analysis.Analyzer{
-	Name:     "erreql",
-	Doc:      "Check for usages of `err ==` and `err !=` to non-nil values and suggest [errors.Is] or [errors.As] instead.",
-	Requires: []*analysis.Analyzer{inspect.Analyzer},
-	Run:      run,
+var DefaultAnalyzer = Build(Config{})
+
+func Build(config Config) *analysis.Analyzer {
+	return &analysis.Analyzer{
+		Name:     "erreql",
+		Doc:      "Check for usages of error ==/!= to non-nil values and suggest errors.Is instead.",
+		Requires: []*analysis.Analyzer{inspect.Analyzer},
+		Run:      runner(config.compileConfig()),
+	}
 }
 
-func run(pass *analysis.Pass) (interface{}, error) {
-	switch pass.Pkg.Path() {
-	case "errors", "errors_test":
-		// These packages know how to use their own APIs.
-		// Sometimes they are testing what happens to incorrect programs.
+func runner(c config) func(pass *analysis.Pass) (interface{}, error) {
+
+	return func(pass *analysis.Pass) (interface{}, error) {
+		if c.skipPackage(pass.Pkg.Path()) {
+			return nil, nil
+		}
+
+		inspect := pass.ResultOf[inspect.Analyzer].(*inspector.Inspector)
+
+		nodeFilter := []ast.Node{
+			(*ast.BinaryExpr)(nil),
+		}
+		if !c.SkipSwitches {
+			nodeFilter = append(nodeFilter, (*ast.SwitchStmt)(nil))
+		}
+		inspect.Preorder(nodeFilter, func(n ast.Node) {
+			// libraries that use a sentinel error value to indicate success.
+			switch n := n.(type) {
+			case *ast.BinaryExpr:
+				checkBin(pass, n)
+			case *ast.SwitchStmt:
+				checkSwitch(pass, n)
+			}
+
+		})
+
 		return nil, nil
 	}
+}
 
-	inspect := pass.ResultOf[inspect.Analyzer].(*inspector.Inspector)
-
-	nodeFilter := []ast.Node{
-		(*ast.BinaryExpr)(nil),
+func checkSwitch(pass *analysis.Pass, sw *ast.SwitchStmt) {
+	if sw.Tag == nil || !isErr(pass, sw.Tag) {
+		return
 	}
-	inspect.Preorder(nodeFilter, func(n ast.Node) {
-		bin := n.(*ast.BinaryExpr)
-		if bin.Op != token.EQL && bin.Op != token.NEQ {
-			return
+	for _, cc := range sw.Body.List {
+		cc := cc.(*ast.CaseClause)
+		if len(cc.List) == 0 {
+			continue
 		}
+		for _, cond := range cc.List {
+			if isNil(pass, cond) {
+				continue
+			}
+			if !isErr(pass, cond) {
+				continue
+			}
+			if isLiteralNonError(pass, cond) {
+				continue
+			}
+			pass.Reportf(cond.Pos(), "switch does not handle wrapped errors")
+		}
+	}
+}
+
+func checkBin(pass *analysis.Pass, bin *ast.BinaryExpr) {
+	if bin.Op != token.EQL && bin.Op != token.NEQ {
+		return
+	}
+
+	if isNil(pass, bin.X) || isNil(pass, bin.Y) {
 		// checking against untyped nil is fine
-		if isNil(pass, bin.X) || isNil(pass, bin.Y) {
-			return
-		}
+		return
+	}
+
+	if !isErr(pass, bin.X) || !isErr(pass, bin.Y) {
 		// checking against non-error types is fine
-		if !isErr(pass, bin.X) || !isErr(pass, bin.Y) {
-			return
-		}
+		return
+	}
+
+	if isLiteralNonError(pass, bin.X) || isLiteralNonError(pass, bin.Y) {
 		// Literal non-Error types are fine. This is a common pattern for
-		// libraries that use a sentinel error value to indicate success.
-		if isLiteralNonError(pass, bin.X) || isLiteralNonError(pass, bin.Y) {
-			return
-		}
+		return
+	}
 
-		pass.Reportf(bin.Pos(), "use errors.Is or errors.As instead of %s", bin.Op)
-	})
-
-	return nil, nil
+	pass.Reportf(bin.Pos(), "use errors.Is or errors.As instead of %s", bin.Op)
 }
 
 var errName = regexp.MustCompile(`^err.|Err|Error|Exception`)
