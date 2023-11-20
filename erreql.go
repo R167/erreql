@@ -19,13 +19,16 @@ func Build(config Config) *analysis.Analyzer {
 		Name:     "erreql",
 		Doc:      "Check for usages of error ==/!= to non-nil values and suggest errors.Is instead.",
 		Requires: []*analysis.Analyzer{inspect.Analyzer},
-		Run:      runner(config.compileConfig()),
+		Run:      runner(config),
 	}
 }
 
-func runner(c config) func(pass *analysis.Pass) (interface{}, error) {
-
+func runner(config Config) func(pass *analysis.Pass) (interface{}, error) {
 	return func(pass *analysis.Pass) (interface{}, error) {
+		// defer compiling the config until the run pass so flags can be set in the future
+		// TODO: Consider memoizing with sync.Once
+		c := config.compileConfig()
+
 		if c.skipPackage(pass.Pkg.Path()) {
 			return nil, nil
 		}

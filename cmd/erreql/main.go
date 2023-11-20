@@ -7,5 +7,5 @@ import (
 )
 
 func main() {
-	singlechecker.Main(erreql.Analyzer)
+	singlechecker.Main(erreql.Build(erreql.Config{}))
 }
